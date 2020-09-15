@@ -47,6 +47,10 @@ def perform_tests(pg_version, es_version):
     if not show_result(pg_version, es_version, "query", run_sql_test("query.sql")):
         success = False
 
+    show_status("Testing query with quals...")
+    if not show_result(pg_version, es_version, "query-quals", run_sql_test("query-quals.sql")):
+        success = False
+
     return success
 
 

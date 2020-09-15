@@ -30,8 +30,7 @@ def _base_qual_to_es(col, op, value, column_map=None):
         return {"match": {col: value.replace("%", "*")}}
 
     # For unknown operators, get everything
-    else:
-        return {"match_all": {}}
+    return {"match_all": {}}
 
 
 def _qual_to_es(qual, column_map=None):
@@ -41,7 +40,9 @@ def _qual_to_es(qual, column_map=None):
             return {
                 "bool": {
                     "should": [
-                        _base_qual_to_es(qual.field_name, qual.operator[0], v, column_map)
+                        _base_qual_to_es(
+                            qual.field_name, qual.operator, v, column_map
+                        )
                         for v in qual.value
                     ]
                 }
@@ -50,21 +51,28 @@ def _qual_to_es(qual, column_map=None):
         return {
             "bool": {
                 "must": [
-                    _base_qual_to_es(qual.field_name, qual.operator[0], v, column_map)
+                    _base_qual_to_es(qual.field_name, qual.operator, v, column_map)
                     for v in qual.value
                 ]
             }
         }
     else:
-        return _base_qual_to_es(qual.field_name, qual.operator[0], qual.value, column_map)
+        return _base_qual_to_es(
+            qual.field_name, qual.operator, qual.value, column_map
+        )
 
 
-def quals_to_es(quals, ignore_column=None, column_map=None):
+def quals_to_es(quals, ignore_columns=None, column_map=None):
     """Convert a list of Multicorn quals to an ElasticSearch query"""
+    ignore_columns = ignore_columns or []
     return {
         "query": {
             "bool": {
-                "must": [_qual_to_es(q, column_map) for q in quals if q.field_name != ignore_column]
+                "must": [
+                    _qual_to_es(q, column_map)
+                    for q in quals
+                    if q.field_name not in ignore_columns
+                ]
             }
         }
     }
