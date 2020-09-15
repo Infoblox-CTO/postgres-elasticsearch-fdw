@@ -1,0 +1,61 @@
+try:
+    from multicorn import ANY
+except ImportError:
+    # Don't fail the import if we're running this directly.
+    ANY = object()
+
+
+_RANGE_OPS = {
+    ">": "gt",
+    ">=": "gte",
+    "<": "lt",
+    "<=": "lte",
+}
+
+
+def _base_qual_to_es(col, op, value):
+    if op in _RANGE_OPS:
+        return {"range": {col: {_RANGE_OPS[op]: value}}}
+
+    if op == "=":
+        return {"term": {col: value}}
+
+    if op in ["<>", "!="]:
+        return {"bool": {"must_not": {"term": {col: value}}}}
+
+    if op == "~~":
+        return {"match": {col: value.replace("%", "*")}}
+
+    # For unknown operators, get everything
+    else:
+        return {"match_all": {}}
+
+
+def _qual_to_es(qual):
+    if qual.is_list_operator:
+        if qual.list_any_or_all == ANY:
+            # Convert col op ANY([a,b,c]) into (cop op a) OR (col op b)...
+            return {
+                "bool": {
+                    "should": [
+                        _base_qual_to_es(qual.field_name, qual.operator[0], v)
+                        for v in qual.value
+                    ]
+                }
+            }
+        # Convert col op ALL(ARRAY[a,b,c...]) into (cop op a) AND (col op b)...
+        return {
+            "bool": {
+                "must": [
+                    _base_qual_to_es(qual.field_name, qual.operator[0], v)
+                    for v in qual.value
+                ]
+            }
+        }
+    else:
+        return _base_qual_to_es(qual.field_name, qual.operator[0], qual.value)
+
+
+def quals_to_es(quals):
+    """Convert a list of Multicorn quals to an ElasticSearch query"""
+    return {"bool": {"must": [_qual_to_es(q) for q in quals]}}
