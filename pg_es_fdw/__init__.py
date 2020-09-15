@@ -219,9 +219,15 @@ class ElasticsearchFDW(ForeignDataWrapper):
             return (0, 0)
 
     def _get_query(self, quals):
+        ignore_columns = []
+        if self.query_column:
+            ignore_columns.append(self.query_column)
+        if self.score_column:
+            ignore_columns.append(self.score_column)
+
         query = quals_to_es(
             quals,
-            ignore_column=self.query_column,
+            ignore_columns=ignore_columns,
             column_map={self._rowid_column: "_id"} if self._rowid_column else None,
         )
 
