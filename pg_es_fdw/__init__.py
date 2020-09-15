@@ -10,6 +10,8 @@ from elasticsearch import Elasticsearch
 from multicorn import ForeignDataWrapper
 from multicorn.utils import log_to_postgres as log2pg
 
+from ._es_query import quals_to_es
+
 
 class ElasticsearchFDW(ForeignDataWrapper):
     """ Elastic Search Foreign Data Wrapper """
@@ -75,10 +77,10 @@ class ElasticsearchFDW(ForeignDataWrapper):
             Returns a tuple of the form (number of rows, average row width) """
 
         try:
-            query = self._get_query(quals)
+            query, _ = self._get_query(quals)
 
             if query:
-                response = self.client.count(q=query, **self.arguments)
+                response = self.client.count(body=query, **self.arguments)
             else:
                 response = self.client.count(**self.arguments)
             return (response["count"], len(columns) * 100)
@@ -91,17 +93,24 @@ class ElasticsearchFDW(ForeignDataWrapper):
             )
             return (0, 0)
 
+    def explain(self, quals, columns, sortkeys=None, verbose=False):
+        query, _ = self._get_query(quals)
+        return [
+            "Elasticsearch query to %s" % self.client,
+            "Query: %s" % json.dumps(query),
+        ]
+
     def execute(self, quals, columns):
         """ Execute the query """
 
         try:
-            query = self._get_query(quals)
+            query, query_string = self._get_query(quals)
 
             if query:
                 response = self.client.search(
                     size=self.scroll_size,
                     scroll=self.scroll_duration,
-                    q=query,
+                    body=query,
                     **self.arguments
                 )
             else:
@@ -113,7 +122,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
                 self.scroll_id = response["_scroll_id"]
 
                 for result in response["hits"]["hits"]:
-                    yield self._convert_response_row(result, columns, query)
+                    yield self._convert_response_row(result, columns, query_string)
 
                 if len(response["hits"]["hits"]) < self.scroll_size:
                     return
@@ -210,10 +219,16 @@ class ElasticsearchFDW(ForeignDataWrapper):
             return (0, 0)
 
     def _get_query(self, quals):
-        if not self.query_column:
-            return None
+        query = quals_to_es(
+            quals,
+            ignore_column=self.query_column,
+            column_map={self._rowid_column: "_id"} if self._rowid_column else None,
+        )
 
-        return next(
+        if not self.query_column:
+            return query, None
+
+        query_string = next(
             (
                 qualifier.value
                 for qualifier in quals
@@ -221,6 +236,13 @@ class ElasticsearchFDW(ForeignDataWrapper):
             ),
             None,
         )
+
+        if query_string:
+            query["query"]["bool"]["must"].append(
+                {"query_string": {"query": query_string}}
+            )
+
+        return query, query_string
 
     def _convert_response_row(self, row_data, columns, query):
         if query:

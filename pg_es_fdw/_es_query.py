@@ -13,7 +13,10 @@ _RANGE_OPS = {
 }
 
 
-def _base_qual_to_es(col, op, value):
+def _base_qual_to_es(col, op, value, column_map=None):
+    if column_map:
+        col = column_map.get(col, col)
+
     if op in _RANGE_OPS:
         return {"range": {col: {_RANGE_OPS[op]: value}}}
 
@@ -31,14 +34,14 @@ def _base_qual_to_es(col, op, value):
         return {"match_all": {}}
 
 
-def _qual_to_es(qual):
+def _qual_to_es(qual, column_map=None):
     if qual.is_list_operator:
         if qual.list_any_or_all == ANY:
             # Convert col op ANY([a,b,c]) into (cop op a) OR (col op b)...
             return {
                 "bool": {
                     "should": [
-                        _base_qual_to_es(qual.field_name, qual.operator[0], v)
+                        _base_qual_to_es(qual.field_name, qual.operator[0], v, column_map)
                         for v in qual.value
                     ]
                 }
@@ -47,15 +50,21 @@ def _qual_to_es(qual):
         return {
             "bool": {
                 "must": [
-                    _base_qual_to_es(qual.field_name, qual.operator[0], v)
+                    _base_qual_to_es(qual.field_name, qual.operator[0], v, column_map)
                     for v in qual.value
                 ]
             }
         }
     else:
-        return _base_qual_to_es(qual.field_name, qual.operator[0], qual.value)
+        return _base_qual_to_es(qual.field_name, qual.operator[0], qual.value, column_map)
 
 
-def quals_to_es(quals):
+def quals_to_es(quals, ignore_column=None, column_map=None):
     """Convert a list of Multicorn quals to an ElasticSearch query"""
-    return {"bool": {"must": [_qual_to_es(q) for q in quals]}}
+    return {
+        "query": {
+            "bool": {
+                "must": [_qual_to_es(q, column_map) for q in quals if q.field_name != ignore_column]
+            }
+        }
+    }
