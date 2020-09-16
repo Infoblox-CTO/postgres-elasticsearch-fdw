@@ -51,6 +51,10 @@ def perform_tests(pg_version, es_version):
     if not show_result(pg_version, es_version, "query-quals", run_sql_test("query-quals.sql")):
         success = False
 
+    show_status("Testing query with arrays...")
+    if not show_result(pg_version, es_version, "query-array", run_sql_test("query-array.sql")):
+        success = False
+
     return success
 
 

@@ -17,6 +17,14 @@ def _base_qual_to_es(col, op, value, column_map=None):
     if column_map:
         col = column_map.get(col, col)
 
+    if value is None:
+        if op == "=":
+            return {"bool": {"must_not": {"exists": {"field": col}}}}
+        if op in ["<>", "!="]:
+            return {"exists": {"field": col}}
+        # Weird comparison to a NULL
+        return {"match_all": {}}
+
     if op in _RANGE_OPS:
         return {"range": {col: {_RANGE_OPS[op]: value}}}
 
@@ -41,7 +49,7 @@ def _qual_to_es(qual, column_map=None):
                 "bool": {
                     "should": [
                         _base_qual_to_es(
-                            qual.field_name, qual.operator, v, column_map
+                            qual.field_name, qual.operator[0], v, column_map
                         )
                         for v in qual.value
                     ]
@@ -51,7 +59,7 @@ def _qual_to_es(qual, column_map=None):
         return {
             "bool": {
                 "must": [
-                    _base_qual_to_es(qual.field_name, qual.operator, v, column_map)
+                    _base_qual_to_es(qual.field_name, qual.operator[0], v, column_map)
                     for v in qual.value
                 ]
             }

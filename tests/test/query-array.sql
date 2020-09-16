@@ -3,5 +3,5 @@ SELECT
 FROM
     articles_es
 WHERE
-    body LIKE '%Godert de Leeuw%' AND id = 39401194 AND title IS NOT NULL
+    id IN (39401194, 39401195, 39401196)
 ;
