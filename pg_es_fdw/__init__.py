@@ -118,6 +118,9 @@ class ElasticsearchFDW(ForeignDataWrapper):
                     size=self.scroll_size, scroll=self.scroll_duration, **self.arguments
                 )
 
+            if not response["hits"]["hits"]:
+                return
+
             while True:
                 self.scroll_id = response["_scroll_id"]
 
