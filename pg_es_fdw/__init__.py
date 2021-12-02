@@ -100,11 +100,11 @@ class ElasticsearchFDW(ForeignDataWrapper):
             "Query: %s" % json.dumps(query),
         ]
 
-    def execute(self, quals, columns):
+    def execute(self, quals, columns, aggs=None):
         """ Execute the query """
 
         try:
-            query, query_string = self._get_query(quals)
+            query, query_string = self._get_query(quals, aggs=aggs)
 
             if query:
                 response = self.client.search(
@@ -118,7 +118,15 @@ class ElasticsearchFDW(ForeignDataWrapper):
                     size=self.scroll_size, scroll=self.scroll_duration, **self.arguments
                 )
 
-            if not response["hits"]["hits"]:
+            if not response["hits"]["hits"] and aggs is None:
+                return
+
+            if aggs is not None:
+                res = response["aggregations"]["res"]["value"]
+
+                yield {
+                    aggs["column"]: res
+                }
                 return
 
             while True:
@@ -221,7 +229,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
             )
             return (0, 0)
 
-    def _get_query(self, quals):
+    def _get_query(self, quals, aggs=None):
         ignore_columns = []
         if self.query_column:
             ignore_columns.append(self.query_column)
@@ -230,6 +238,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
 
         query = quals_to_es(
             quals,
+            aggs=aggs,
             ignore_columns=ignore_columns,
             column_map={self._rowid_column: "_id"} if self._rowid_column else None,
         )

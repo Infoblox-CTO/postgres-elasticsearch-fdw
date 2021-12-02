@@ -70,9 +70,19 @@ def _qual_to_es(qual, column_map=None):
         )
 
 
-def quals_to_es(quals, ignore_columns=None, column_map=None):
+def quals_to_es(quals, aggs=None, ignore_columns=None, column_map=None):
     """Convert a list of Multicorn quals to an ElasticSearch query"""
     ignore_columns = ignore_columns or []
+    if aggs is not None:
+        return {
+            "aggs": {
+                "res": {
+                    aggs["operation"]: {
+                        "field": aggs["column"]
+                    }
+                }
+            }
+        }
     return {
         "query": {
             "bool": {
