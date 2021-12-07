@@ -65,9 +65,7 @@ def _qual_to_es(qual, column_map=None):
             }
         }
     else:
-        return _base_qual_to_es(
-            qual.field_name, qual.operator, qual.value, column_map
-        )
+        return _base_qual_to_es(qual.field_name, qual.operator, qual.value, column_map)
 
 
 def quals_to_es(quals, aggs=None, ignore_columns=None, column_map=None):
@@ -76,11 +74,8 @@ def quals_to_es(quals, aggs=None, ignore_columns=None, column_map=None):
     if aggs is not None:
         return {
             "aggs": {
-                "res": {
-                    aggs["operation"]: {
-                        "field": aggs["column"]
-                    }
-                }
+                agg_name: {agg_props["operation"]: {"field": agg_props["column"]}}
+                for agg_name, agg_props in aggs.items()
             }
         }
     return {

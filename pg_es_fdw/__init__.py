@@ -18,12 +18,12 @@ class ElasticsearchFDW(ForeignDataWrapper):
 
     @property
     def rowid_column(self):
-        """ Returns a column name which will act as a rowid column for
-            delete/update operations.
+        """Returns a column name which will act as a rowid column for
+        delete/update operations.
 
-            This can be either an existing column name, or a made-up one. This
-            column name should be subsequently present in every returned
-            resultset. """
+        This can be either an existing column name, or a made-up one. This
+        column name should be subsequently present in every returned
+        resultset."""
 
         return self._rowid_column
 
@@ -73,8 +73,8 @@ class ElasticsearchFDW(ForeignDataWrapper):
         self.scroll_id = None
 
     def get_rel_size(self, quals, columns):
-        """ Helps the planner by returning costs.
-            Returns a tuple of the form (number of rows, average row width) """
+        """Helps the planner by returning costs.
+        Returns a tuple of the form (number of rows, average row width)"""
 
         try:
             query, _ = self._get_query(quals)
@@ -105,11 +105,12 @@ class ElasticsearchFDW(ForeignDataWrapper):
 
         try:
             query, query_string = self._get_query(quals, aggs=aggs)
+            logging.error(query)
 
             if query:
                 response = self.client.search(
-                    size=self.scroll_size,
-                    scroll=self.scroll_duration,
+                    size=self.scroll_size if aggs is None else 0,
+                    scroll=self.scroll_duration if aggs is None else None,
                     body=query,
                     **self.arguments
                 )
@@ -121,12 +122,14 @@ class ElasticsearchFDW(ForeignDataWrapper):
             if not response["hits"]["hits"] and aggs is None:
                 return
 
-            if aggs is not None:
-                res = response["aggregations"]["res"]["value"]
+            logging.error(response)
 
-                yield {
-                    aggs["column"]: res
-                }
+            if aggs is not None:
+                result = {}
+                for agg_name in aggs:
+                    result[agg_name] = response["aggregations"][agg_name]["value"]
+
+                yield result
                 return
 
             while True:
