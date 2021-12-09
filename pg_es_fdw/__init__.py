@@ -100,17 +100,19 @@ class ElasticsearchFDW(ForeignDataWrapper):
             "Query: %s" % json.dumps(query),
         ]
 
-    def execute(self, quals, columns, aggs=None):
+    def execute(self, quals, columns, aggs=None, group_clauses=None):
         """ Execute the query """
 
         try:
-            query, query_string = self._get_query(quals, aggs=aggs)
+            query, query_string = self._get_query(quals, aggs=aggs, group_clauses=group_clauses)
             logging.error(query)
+
+            is_aggregation = aggs or group_clauses
 
             if query:
                 response = self.client.search(
-                    size=self.scroll_size if aggs is None else 0,
-                    scroll=self.scroll_duration if aggs is None else None,
+                    size=self.scroll_size if not is_aggregation else 0,
+                    scroll=self.scroll_duration if not is_aggregation else None,
                     body=query,
                     **self.arguments
                 )
@@ -119,17 +121,43 @@ class ElasticsearchFDW(ForeignDataWrapper):
                     size=self.scroll_size, scroll=self.scroll_duration, **self.arguments
                 )
 
-            if not response["hits"]["hits"] and aggs is None:
+            if not response["hits"]["hits"] and not is_aggregation:
                 return
 
             logging.error(response)
 
-            if aggs is not None:
-                result = {}
-                for agg_name in aggs:
-                    result[agg_name] = response["aggregations"][agg_name]["value"]
+            if is_aggregation:
+                if group_clauses is None:
+                    result = {}
 
-                yield result
+                    for agg_name in aggs:
+                        result[agg_name] = response["aggregations"][agg_name]["value"]
+                    yield result
+                else:
+                    while True:
+                        for bucket in response["aggregations"]["group_buckets"]["buckets"]:
+                            result = {}
+
+                            for column in group_clauses:
+                                result[column] = bucket["key"][column]
+
+                            if aggs is not None:
+                                for agg_name in aggs:
+                                    result[agg_name] = bucket[agg_name]["value"]
+
+                            yield result
+
+                        if "after_key" not in response["aggregations"]["group_buckets"]:
+                            break
+
+                        query["aggs"]["group_buckets"]["composite"]["after"] = response["aggregations"]["group_buckets"]["after_key"]
+
+                        response = self.client.search(
+                            size=0,
+                            body=query,
+                            **self.arguments
+                        )
+
                 return
 
             while True:
@@ -232,7 +260,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
             )
             return (0, 0)
 
-    def _get_query(self, quals, aggs=None):
+    def _get_query(self, quals, aggs=None, group_clauses=None):
         ignore_columns = []
         if self.query_column:
             ignore_columns.append(self.query_column)
@@ -242,6 +270,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
         query = quals_to_es(
             quals,
             aggs=aggs,
+            group_clauses=group_clauses,
             ignore_columns=ignore_columns,
             column_map={self._rowid_column: "_id"} if self._rowid_column else None,
         )
