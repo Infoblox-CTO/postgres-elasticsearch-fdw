@@ -93,6 +93,18 @@ class ElasticsearchFDW(ForeignDataWrapper):
             )
             return (0, 0)
 
+    def can_pushdown_upperrel(self):
+        return {
+            "groupby_supported": True,
+            "agg_functions": {
+                "avg": "avg",
+                "max": "max",
+                "min": "min",
+                "sum": "sum",
+                "count": "value_count",
+            }
+        }
+
     def explain(self, quals, columns, sortkeys=None, verbose=False):
         query, _ = self._get_query(quals)
         return [
