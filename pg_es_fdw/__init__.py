@@ -102,7 +102,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
                 "min": "min",
                 "sum": "sum",
                 "count": "value_count",
-            }
+            },
         }
 
     def explain(self, quals, columns, sortkeys=None, verbose=False):
@@ -116,8 +116,9 @@ class ElasticsearchFDW(ForeignDataWrapper):
         """ Execute the query """
 
         try:
-            query, query_string = self._get_query(quals, aggs=aggs, group_clauses=group_clauses)
-            logging.error(query)
+            query, query_string = self._get_query(
+                quals, aggs=aggs, group_clauses=group_clauses
+            )
 
             is_aggregation = aggs or group_clauses
 
@@ -136,40 +137,10 @@ class ElasticsearchFDW(ForeignDataWrapper):
             if not response["hits"]["hits"] and not is_aggregation:
                 return
 
-            logging.error(response)
-
             if is_aggregation:
-                if group_clauses is None:
-                    result = {}
-
-                    for agg_name in aggs:
-                        result[agg_name] = response["aggregations"][agg_name]["value"]
-                    yield result
-                else:
-                    while True:
-                        for bucket in response["aggregations"]["group_buckets"]["buckets"]:
-                            result = {}
-
-                            for column in group_clauses:
-                                result[column] = bucket["key"][column]
-
-                            if aggs is not None:
-                                for agg_name in aggs:
-                                    result[agg_name] = bucket[agg_name]["value"]
-
-                            yield result
-
-                        if "after_key" not in response["aggregations"]["group_buckets"]:
-                            break
-
-                        query["aggs"]["group_buckets"]["composite"]["after"] = response["aggregations"]["group_buckets"]["after_key"]
-
-                        response = self.client.search(
-                            size=0,
-                            body=query,
-                            **self.arguments
-                        )
-
+                yield from self._handle_aggregation_response(
+                    query, response, aggs, group_clauses
+                )
                 return
 
             while True:
@@ -287,6 +258,10 @@ class ElasticsearchFDW(ForeignDataWrapper):
             column_map={self._rowid_column: "_id"} if self._rowid_column else None,
         )
 
+        if group_clauses is not None:
+            # Configure pagination for GROUP BY's
+            query["aggs"]["group_buckets"]["composite"]["size"] = self.scroll_size
+
         if not self.query_column:
             return query, None
 
@@ -336,3 +311,33 @@ class ElasticsearchFDW(ForeignDataWrapper):
         if isinstance(value, (list, dict)):
             return json.dumps(value)
         return value
+
+    def _handle_aggregation_response(self, query, response, aggs, group_clauses):
+        if group_clauses is None:
+            result = {}
+
+            for agg_name in aggs:
+                result[agg_name] = response["aggregations"][agg_name]["value"]
+            yield result
+        else:
+            while True:
+                for bucket in response["aggregations"]["group_buckets"]["buckets"]:
+                    result = {}
+
+                    for column in group_clauses:
+                        result[column] = bucket["key"][column]
+
+                    if aggs is not None:
+                        for agg_name in aggs:
+                            result[agg_name] = bucket[agg_name]["value"]
+
+                    yield result
+
+                # Check if we need to paginate results
+                if "after_key" not in response["aggregations"]["group_buckets"]:
+                    break
+
+                query["aggs"]["group_buckets"]["composite"]["after"] = \
+                    response["aggregations"]["group_buckets"]["after_key"]
+
+                response = self.client.search(size=0, body=query, **self.arguments)
