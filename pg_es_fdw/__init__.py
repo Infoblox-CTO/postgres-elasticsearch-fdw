@@ -10,7 +10,7 @@ from elasticsearch import Elasticsearch
 from multicorn import ForeignDataWrapper
 from multicorn.utils import log_to_postgres as log2pg
 
-from ._es_query import quals_to_es
+from ._es_query import _PG_TO_ES_AGG_FUNCS, quals_to_es
 
 
 class ElasticsearchFDW(ForeignDataWrapper):
@@ -96,13 +96,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
     def can_pushdown_upperrel(self):
         return {
             "groupby_supported": True,
-            "agg_functions": {
-                "avg": "avg",
-                "max": "max",
-                "min": "min",
-                "sum": "sum",
-                "count": "value_count",
-            },
+            "agg_functions": _PG_TO_ES_AGG_FUNCS,
         }
 
     def explain(

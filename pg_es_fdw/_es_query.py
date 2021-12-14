@@ -12,6 +12,14 @@ _RANGE_OPS = {
     "<=": "lte",
 }
 
+_PG_TO_ES_AGG_FUNCS = {
+    "avg": "avg",
+    "max": "max",
+    "min": "min",
+    "sum": "sum",
+    "count": "value_count",
+}
+
 
 def _base_qual_to_es(col, op, value, column_map=None):
     if column_map:
@@ -77,7 +85,11 @@ def quals_to_es(
     # Aggreagtion/grouping queries
     if aggs is not None:
         aggs_query = {
-            agg_name: {agg_props["function"]: {"field": agg_props["column"]}}
+            agg_name: {
+                _PG_TO_ES_AGG_FUNCS[agg_props["function"]]: {
+                    "field": agg_props["column"]
+                }
+            }
             for agg_name, agg_props in aggs.items()
         }
 
