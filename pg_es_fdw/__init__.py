@@ -105,11 +105,19 @@ class ElasticsearchFDW(ForeignDataWrapper):
             },
         }
 
-    def explain(self, quals, columns, sortkeys=None, verbose=False):
-        query, _ = self._get_query(quals)
+    def explain(
+        self,
+        quals,
+        columns,
+        sortkeys=None,
+        aggs=None,
+        group_clauses=None,
+        verbose=False,
+    ):
+        query, _ = self._get_query(quals, aggs=aggs, group_clauses=group_clauses)
         return [
             "Elasticsearch query to %s" % self.client,
-            "Query: %s" % json.dumps(query),
+            "Query: %s" % json.dumps(query, indent=4),
         ]
 
     def execute(self, quals, columns, aggs=None, group_clauses=None):
@@ -337,7 +345,8 @@ class ElasticsearchFDW(ForeignDataWrapper):
                 if "after_key" not in response["aggregations"]["group_buckets"]:
                     break
 
-                query["aggs"]["group_buckets"]["composite"]["after"] = \
-                    response["aggregations"]["group_buckets"]["after_key"]
+                query["aggs"]["group_buckets"]["composite"]["after"] = response[
+                    "aggregations"
+                ]["group_buckets"]["after_key"]
 
                 response = self.client.search(size=0, body=query, **self.arguments)
