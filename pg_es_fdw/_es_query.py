@@ -82,7 +82,7 @@ def quals_to_es(
     """Convert a list of Multicorn quals to an ElasticSearch query"""
     ignore_columns = ignore_columns or []
 
-    # Aggreagtion/grouping queries
+    # Aggregation/grouping queries
     if aggs is not None:
         aggs_query = {
             agg_name: {
