@@ -12,6 +12,14 @@ _RANGE_OPS = {
     "<=": "lte",
 }
 
+_PG_TO_ES_AGG_FUNCS = {
+    "avg": "avg",
+    "max": "max",
+    "min": "min",
+    "sum": "sum",
+    "count": "value_count",
+}
+
 
 def _base_qual_to_es(col, op, value, column_map=None):
     if column_map:
@@ -65,14 +73,47 @@ def _qual_to_es(qual, column_map=None):
             }
         }
     else:
-        return _base_qual_to_es(
-            qual.field_name, qual.operator, qual.value, column_map
-        )
+        return _base_qual_to_es(qual.field_name, qual.operator, qual.value, column_map)
 
 
-def quals_to_es(quals, ignore_columns=None, column_map=None):
+def quals_to_es(
+    quals, aggs=None, group_clauses=None, ignore_columns=None, column_map=None
+):
     """Convert a list of Multicorn quals to an ElasticSearch query"""
     ignore_columns = ignore_columns or []
+
+    # Aggregation/grouping queries
+    if aggs is not None:
+        aggs_query = {
+            agg_name: {
+                _PG_TO_ES_AGG_FUNCS[agg_props["function"]]: {
+                    "field": agg_props["column"]
+                }
+            }
+            for agg_name, agg_props in aggs.items()
+        }
+
+        if group_clauses is None:
+            return {"aggs": aggs_query}
+
+    if group_clauses is not None:
+        group_query = {
+            "group_buckets": {
+                "composite": {
+                    "sources": [
+                        {column: {"terms": {"field": column}}}
+                        for column in group_clauses
+                    ]
+                }
+            }
+        }
+
+        if aggs is not None:
+            group_query["group_buckets"]["aggregations"] = aggs_query
+
+        return {"aggs": group_query}
+
+    # Regular query
     return {
         "query": {
             "bool": {

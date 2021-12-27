@@ -10,7 +10,7 @@ from elasticsearch import Elasticsearch
 from multicorn import ForeignDataWrapper
 from multicorn.utils import log_to_postgres as log2pg
 
-from ._es_query import quals_to_es
+from ._es_query import _PG_TO_ES_AGG_FUNCS, quals_to_es
 
 
 class ElasticsearchFDW(ForeignDataWrapper):
@@ -18,12 +18,12 @@ class ElasticsearchFDW(ForeignDataWrapper):
 
     @property
     def rowid_column(self):
-        """ Returns a column name which will act as a rowid column for
-            delete/update operations.
+        """Returns a column name which will act as a rowid column for
+        delete/update operations.
 
-            This can be either an existing column name, or a made-up one. This
-            column name should be subsequently present in every returned
-            resultset. """
+        This can be either an existing column name, or a made-up one. This
+        column name should be subsequently present in every returned
+        resultset."""
 
         return self._rowid_column
 
@@ -73,8 +73,8 @@ class ElasticsearchFDW(ForeignDataWrapper):
         self.scroll_id = None
 
     def get_rel_size(self, quals, columns):
-        """ Helps the planner by returning costs.
-            Returns a tuple of the form (number of rows, average row width) """
+        """Helps the planner by returning costs.
+        Returns a tuple of the form (number of rows, average row width)"""
 
         try:
             query, _ = self._get_query(quals)
@@ -93,23 +93,41 @@ class ElasticsearchFDW(ForeignDataWrapper):
             )
             return (0, 0)
 
-    def explain(self, quals, columns, sortkeys=None, verbose=False):
-        query, _ = self._get_query(quals)
+    def can_pushdown_upperrel(self):
+        return {
+            "groupby_supported": True,
+            "agg_functions": _PG_TO_ES_AGG_FUNCS,
+        }
+
+    def explain(
+        self,
+        quals,
+        columns,
+        sortkeys=None,
+        aggs=None,
+        group_clauses=None,
+        verbose=False,
+    ):
+        query, _ = self._get_query(quals, aggs=aggs, group_clauses=group_clauses)
         return [
             "Elasticsearch query to %s" % self.client,
-            "Query: %s" % json.dumps(query),
+            "Query: %s" % json.dumps(query, indent=4),
         ]
 
-    def execute(self, quals, columns):
+    def execute(self, quals, columns, aggs=None, group_clauses=None):
         """ Execute the query """
 
         try:
-            query, query_string = self._get_query(quals)
+            query, query_string = self._get_query(
+                quals, aggs=aggs, group_clauses=group_clauses
+            )
+
+            is_aggregation = aggs or group_clauses
 
             if query:
                 response = self.client.search(
-                    size=self.scroll_size,
-                    scroll=self.scroll_duration,
+                    size=self.scroll_size if not is_aggregation else 0,
+                    scroll=self.scroll_duration if not is_aggregation else None,
                     body=query,
                     **self.arguments
                 )
@@ -118,7 +136,13 @@ class ElasticsearchFDW(ForeignDataWrapper):
                     size=self.scroll_size, scroll=self.scroll_duration, **self.arguments
                 )
 
-            if not response["hits"]["hits"]:
+            if not response["hits"]["hits"] and not is_aggregation:
+                return
+
+            if is_aggregation:
+                yield from self._handle_aggregation_response(
+                    query, response, aggs, group_clauses
+                )
                 return
 
             while True:
@@ -221,7 +245,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
             )
             return (0, 0)
 
-    def _get_query(self, quals):
+    def _get_query(self, quals, aggs=None, group_clauses=None):
         ignore_columns = []
         if self.query_column:
             ignore_columns.append(self.query_column)
@@ -230,9 +254,15 @@ class ElasticsearchFDW(ForeignDataWrapper):
 
         query = quals_to_es(
             quals,
+            aggs=aggs,
+            group_clauses=group_clauses,
             ignore_columns=ignore_columns,
             column_map={self._rowid_column: "_id"} if self._rowid_column else None,
         )
+
+        if group_clauses is not None:
+            # Configure pagination for GROUP BY's
+            query["aggs"]["group_buckets"]["composite"]["size"] = self.scroll_size
 
         if not self.query_column:
             return query, None
@@ -283,3 +313,34 @@ class ElasticsearchFDW(ForeignDataWrapper):
         if isinstance(value, (list, dict)):
             return json.dumps(value)
         return value
+
+    def _handle_aggregation_response(self, query, response, aggs, group_clauses):
+        if group_clauses is None:
+            result = {}
+
+            for agg_name in aggs:
+                result[agg_name] = response["aggregations"][agg_name]["value"]
+            yield result
+        else:
+            while True:
+                for bucket in response["aggregations"]["group_buckets"]["buckets"]:
+                    result = {}
+
+                    for column in group_clauses:
+                        result[column] = bucket["key"][column]
+
+                    if aggs is not None:
+                        for agg_name in aggs:
+                            result[agg_name] = bucket[agg_name]["value"]
+
+                    yield result
+
+                # Check if we need to paginate results
+                if "after_key" not in response["aggregations"]["group_buckets"]:
+                    break
+
+                query["aggs"]["group_buckets"]["composite"]["after"] = response[
+                    "aggregations"
+                ]["group_buckets"]["after_key"]
+
+                response = self.client.search(size=0, body=query, **self.arguments)
