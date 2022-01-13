@@ -82,6 +82,20 @@ def quals_to_es(
     """Convert a list of Multicorn quals to an ElasticSearch query"""
     ignore_columns = ignore_columns or []
 
+    query = {}
+    if quals is not None and len(quals) > 0:
+        query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        _qual_to_es(q, column_map)
+                        for q in quals
+                        if q.field_name not in ignore_columns
+                    ]
+                }
+            }
+        }
+
     # Aggregation/grouping queries
     if aggs is not None:
         aggs_query = {
@@ -94,7 +108,7 @@ def quals_to_es(
         }
 
         if group_clauses is None:
-            return {"aggs": aggs_query}
+            query["aggs"] = aggs_query
 
     if group_clauses is not None:
         group_query = {
@@ -111,17 +125,7 @@ def quals_to_es(
         if aggs is not None:
             group_query["group_buckets"]["aggregations"] = aggs_query
 
-        return {"aggs": group_query}
+        query["aggs"] = group_query
 
     # Regular query
-    return {
-        "query": {
-            "bool": {
-                "must": [
-                    _qual_to_es(q, column_map)
-                    for q in quals
-                    if q.field_name not in ignore_columns
-                ]
-            }
-        }
-    }
+    return query
