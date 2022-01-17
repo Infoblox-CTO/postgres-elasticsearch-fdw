@@ -44,7 +44,7 @@ def _base_qual_to_es(col, op, value, column_map=None):
         return {"bool": {"must_not": {"term": {col: value}}}}
 
     if op == "~~":
-        return {"match": {col: value.replace("%", "*")}}
+        return {"wildcard": {col: value.replace("%", "*")}}
 
     # For unknown operators, get everything
     return {"match_all": {}}
