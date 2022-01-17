@@ -319,6 +319,12 @@ class ElasticsearchFDW(ForeignDataWrapper):
             result = {}
 
             for agg_name in aggs:
+                if agg_name == "count.*":
+                    # COUNT(*) is a special case, since it doesn't have a
+                    # corresponding aggregation primitice in ES
+                    result[agg_name] = response["hits"]["total"]["value"]
+                    continue
+
                 result[agg_name] = response["aggregations"][agg_name]["value"]
             yield result
         else:
@@ -331,6 +337,12 @@ class ElasticsearchFDW(ForeignDataWrapper):
 
                     if aggs is not None:
                         for agg_name in aggs:
+                            if agg_name == "count.*":
+                                # In general case with GROUP BY clauses COUNT(*)
+                                # is taken from the bucket's doc_count field
+                                result[agg_name] = bucket["doc_count"]
+                                continue
+
                             result[agg_name] = bucket[agg_name]["value"]
 
                     yield result

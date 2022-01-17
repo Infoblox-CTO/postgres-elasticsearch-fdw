@@ -18,6 +18,7 @@ _PG_TO_ES_AGG_FUNCS = {
     "min": "min",
     "sum": "sum",
     "count": "value_count",
+    "count.*": None  # not mapped to a particular function
 }
 
 
@@ -103,9 +104,17 @@ def quals_to_es(
                 }
             }
             for agg_name, agg_props in aggs.items()
+            if agg_name != "count.*"
         }
 
         if group_clauses is None:
+            if "count.*" in aggs:
+                # There is no particular COUNT(*) equivalent in ES, instead
+                # for plain aggregations (e.g. no grouping statements), we need
+                # to enable the track_total_hits option in order to get an
+                # accuate number of matched docs.
+                query["track_total_hits"] = True
+
             query["aggs"] = aggs_query
 
     if group_clauses is not None:
@@ -125,5 +134,4 @@ def quals_to_es(
 
         query["aggs"] = group_query
 
-    # Regular query
     return query
