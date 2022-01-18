@@ -1,3 +1,4 @@
+import re
 try:
     from multicorn import ANY
 except ImportError:
@@ -22,6 +23,20 @@ _PG_TO_ES_AGG_FUNCS = {
 }
 
 
+def _convert_pattern_match_to_es(expr):
+    def _pg_es_pattern_map(matchobj):
+        if matchobj.group(0) == "%":
+            return "*"
+        elif matchobj.group(0) == "_":
+            return "?"
+        elif matchobj.group(0) == "\%":
+            return "%"
+        elif matchobj.group(0) == "\_":
+            return "_"
+
+    return re.sub(r'\\?%|\\?_', _pg_es_pattern_map, expr)
+
+
 def _base_qual_to_es(col, op, value, column_map=None):
     if column_map:
         col = column_map.get(col, col)
@@ -44,7 +59,7 @@ def _base_qual_to_es(col, op, value, column_map=None):
         return {"bool": {"must_not": {"term": {col: value}}}}
 
     if op == "~~":
-        return {"wildcard": {col: value.replace("%", "*")}}
+        return {"wildcard": {col: _convert_pattern_match_to_es(value)}}
 
     # For unknown operators, get everything
     return {"match_all": {}}

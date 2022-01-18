@@ -321,7 +321,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
             for agg_name in aggs:
                 if agg_name == "count.*":
                     # COUNT(*) is a special case, since it doesn't have a
-                    # corresponding aggregation primitice in ES
+                    # corresponding aggregation primitive in ES
                     result[agg_name] = response["hits"]["total"]["value"]
                     continue
 
