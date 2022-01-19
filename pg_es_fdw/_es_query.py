@@ -35,8 +35,10 @@ def _convert_pattern_match_to_es(expr):
             return "%"
         elif matchobj.group(0) == "\_":
             return "_"
+        elif matchobj.group(0) == "\\\\":
+            return "\\"
 
-    return re.sub(r'\\?%|\\?_', _pg_es_pattern_map, expr)
+    return re.sub(r'\\\\|\\?%|\\?_', _pg_es_pattern_map, fr"{expr}")
 
 
 def _base_qual_to_es(col, op, value, column_map=None):
