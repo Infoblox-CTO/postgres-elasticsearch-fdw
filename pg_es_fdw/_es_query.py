@@ -22,6 +22,8 @@ _PG_TO_ES_AGG_FUNCS = {
     "count.*": None  # not mapped to a particular function
 }
 
+_OPERATORS_SUPPORTED = [">", ">=", "<", "<=", "=", "<>", "!=", "~~"]
+
 
 def _convert_pattern_match_to_es(expr):
     def _pg_es_pattern_map(matchobj):

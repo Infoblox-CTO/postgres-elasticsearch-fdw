@@ -10,7 +10,7 @@ from elasticsearch import Elasticsearch
 from multicorn import ForeignDataWrapper
 from multicorn.utils import log_to_postgres as log2pg
 
-from ._es_query import _PG_TO_ES_AGG_FUNCS, quals_to_es
+from ._es_query import _PG_TO_ES_AGG_FUNCS, _OPERATORS_SUPPORTED, quals_to_es
 
 
 class ElasticsearchFDW(ForeignDataWrapper):
@@ -97,6 +97,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
         return {
             "groupby_supported": True,
             "agg_functions": _PG_TO_ES_AGG_FUNCS,
+            "operators_supported": _OPERATORS_SUPPORTED,
         }
 
     def explain(
