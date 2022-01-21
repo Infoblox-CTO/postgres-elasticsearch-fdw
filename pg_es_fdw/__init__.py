@@ -10,7 +10,7 @@ from elasticsearch import Elasticsearch
 from multicorn import ForeignDataWrapper
 from multicorn.utils import log_to_postgres as log2pg
 
-from ._es_query import _PG_TO_ES_AGG_FUNCS, quals_to_es
+from ._es_query import _PG_TO_ES_AGG_FUNCS, _OPERATORS_SUPPORTED, quals_to_es
 
 
 class ElasticsearchFDW(ForeignDataWrapper):
@@ -97,6 +97,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
         return {
             "groupby_supported": True,
             "agg_functions": _PG_TO_ES_AGG_FUNCS,
+            "operators_supported": _OPERATORS_SUPPORTED,
         }
 
     def explain(
@@ -319,6 +320,12 @@ class ElasticsearchFDW(ForeignDataWrapper):
             result = {}
 
             for agg_name in aggs:
+                if agg_name == "count.*":
+                    # COUNT(*) is a special case, since it doesn't have a
+                    # corresponding aggregation primitive in ES
+                    result[agg_name] = response["hits"]["total"]["value"]
+                    continue
+
                 result[agg_name] = response["aggregations"][agg_name]["value"]
             yield result
         else:
@@ -331,6 +338,12 @@ class ElasticsearchFDW(ForeignDataWrapper):
 
                     if aggs is not None:
                         for agg_name in aggs:
+                            if agg_name == "count.*":
+                                # In general case with GROUP BY clauses COUNT(*)
+                                # is taken from the bucket's doc_count field
+                                result[agg_name] = bucket["doc_count"]
+                                continue
+
                             result[agg_name] = bucket[agg_name]["value"]
 
                     yield result

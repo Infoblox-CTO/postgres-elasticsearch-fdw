@@ -1,3 +1,4 @@
+import re
 try:
     from multicorn import ANY
 except ImportError:
@@ -18,7 +19,30 @@ _PG_TO_ES_AGG_FUNCS = {
     "min": "min",
     "sum": "sum",
     "count": "value_count",
+    "count.*": None  # not mapped to a particular function
 }
+
+_OPERATORS_SUPPORTED = [">", ">=", "<", "<=", "=", "<>", "!=", "~~"]
+
+
+def _convert_pattern_match_to_es(expr):
+    def _pg_es_pattern_map(matchobj):
+        if matchobj.group(0) == "%":
+            return "*"
+        elif matchobj.group(0) == "_":
+            return "?"
+        elif matchobj.group(0) == "\%":
+            return "%"
+        elif matchobj.group(0) == "\_":
+            return "_"
+        elif matchobj.group(0) == "*":
+            return "\\*"
+        elif matchobj.group(0) == "?":
+            return "\\?"
+        elif matchobj.group(0) == "\\\\":
+            return "\\"
+
+    return re.sub(r'\\\\|\\?%|\\?_|\*|\?', _pg_es_pattern_map, fr"{expr}")
 
 
 def _base_qual_to_es(col, op, value, column_map=None):
@@ -43,7 +67,7 @@ def _base_qual_to_es(col, op, value, column_map=None):
         return {"bool": {"must_not": {"term": {col: value}}}}
 
     if op == "~~":
-        return {"match": {col: value.replace("%", "*")}}
+        return {"wildcard": {col: _convert_pattern_match_to_es(value)}}
 
     # For unknown operators, get everything
     return {"match_all": {}}
@@ -82,6 +106,18 @@ def quals_to_es(
     """Convert a list of Multicorn quals to an ElasticSearch query"""
     ignore_columns = ignore_columns or []
 
+    query = {
+        "query": {
+            "bool": {
+                "must": [
+                    _qual_to_es(q, column_map)
+                    for q in quals
+                    if q.field_name not in ignore_columns
+                ]
+            }
+        }
+    }
+
     # Aggregation/grouping queries
     if aggs is not None:
         aggs_query = {
@@ -91,10 +127,18 @@ def quals_to_es(
                 }
             }
             for agg_name, agg_props in aggs.items()
+            if agg_name != "count.*"
         }
 
         if group_clauses is None:
-            return {"aggs": aggs_query}
+            if "count.*" in aggs:
+                # There is no particular COUNT(*) equivalent in ES, instead
+                # for plain aggregations (e.g. no grouping statements), we need
+                # to enable the track_total_hits option in order to get an
+                # accuate number of matched docs.
+                query["track_total_hits"] = True
+
+            query["aggs"] = aggs_query
 
     if group_clauses is not None:
         group_query = {
@@ -111,17 +155,6 @@ def quals_to_es(
         if aggs is not None:
             group_query["group_buckets"]["aggregations"] = aggs_query
 
-        return {"aggs": group_query}
+        query["aggs"] = group_query
 
-    # Regular query
-    return {
-        "query": {
-            "bool": {
-                "must": [
-                    _qual_to_es(q, column_map)
-                    for q in quals
-                    if q.field_name not in ignore_columns
-                ]
-            }
-        }
-    }
+    return query
