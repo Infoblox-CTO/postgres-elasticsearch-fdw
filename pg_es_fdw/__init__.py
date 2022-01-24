@@ -96,7 +96,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
     def can_pushdown_upperrel(self):
         return {
             "groupby_supported": True,
-            "agg_functions": _PG_TO_ES_AGG_FUNCS.keys(),
+            "agg_functions": list(_PG_TO_ES_AGG_FUNCS),
             "operators_supported": _OPERATORS_SUPPORTED,
         }
 
