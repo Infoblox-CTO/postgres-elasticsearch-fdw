@@ -14,6 +14,7 @@ download ="https://github.com/matthewfranglen/postgres-elasticsearch-fdw/archive
 
 [tool.poetry.dependencies]
 elasticsearch = "^7.6.0"
+opensearch-py = "^1.0.0"
 
 [tool.poetry.dev-dependencies]
 black = "^19.10b0"

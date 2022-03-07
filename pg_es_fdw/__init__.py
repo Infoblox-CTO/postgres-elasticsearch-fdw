@@ -6,6 +6,7 @@ import logging
 
 from elasticsearch import VERSION as ELASTICSEARCH_VERSION
 from elasticsearch import Elasticsearch
+from opensearchpy import OpenSearch
 
 from multicorn import ForeignDataWrapper
 from multicorn.utils import log_to_postgres as log2pg
@@ -39,6 +40,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
         self._rowid_column = options.pop("rowid_column", "id")
         username = options.pop("username", None)
         password = options.pop("password", None)
+        isopensearch = options.pop("opensearch", False)
 
         if ELASTICSEARCH_VERSION[0] >= 7:
             self.path = "/{index}".format(index=self.index)
@@ -60,9 +62,14 @@ class ElasticsearchFDW(ForeignDataWrapper):
         host = options.pop("host", "localhost")
         port = int(options.pop("port", "9200"))
         timeout = int(options.pop("timeout", "10"))
-        self.client = Elasticsearch(
-            [{"scheme": scheme, "host": host, "port": port}], http_auth=auth, timeout=timeout, **options
-        )
+        if isopensearch:
+            self.client = OpenSearch(
+                [{"scheme": scheme, "host": host, "port": port}], http_auth=auth, timeout=timeout, **options
+            )
+        else:
+            self.client = Elasticsearch(
+                [{"scheme": scheme, "host": host, "port": port}], http_auth=auth, timeout=timeout, **options
+            )
 
         self.columns = columns
         self.json_columns = {
