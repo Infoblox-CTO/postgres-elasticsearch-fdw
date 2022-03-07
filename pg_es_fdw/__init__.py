@@ -56,11 +56,12 @@ class ElasticsearchFDW(ForeignDataWrapper):
         else:
             auth = None
 
+        scheme = options.pop("scheme", "https")
         host = options.pop("host", "localhost")
         port = int(options.pop("port", "9200"))
         timeout = int(options.pop("timeout", "10"))
         self.client = Elasticsearch(
-            [{"host": host, "port": port}], http_auth=auth, timeout=timeout, **options
+            [{"scheme": scheme, "host": host, "port": port}], http_auth=auth, timeout=timeout, **options
         )
 
         self.columns = columns
