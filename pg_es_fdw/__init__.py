@@ -3,6 +3,9 @@
 
 import json
 import logging
+from datetime import datetime
+
+from pytz import timezone
 
 from elasticsearch import VERSION as ELASTICSEARCH_VERSION
 from elasticsearch import Elasticsearch
@@ -321,6 +324,14 @@ class ElasticsearchFDW(ForeignDataWrapper):
         value = row_data["_source"][column]
         if isinstance(value, (list, dict)):
             return json.dumps(value)
+        column_def = self.columns.get(column, None)
+        if column_def is None:
+            return value
+        if column_def.base_type_name == "timestamp":
+            if isinstance(value, int):
+                if value > 3000000000:
+                    value = value / 1000.0
+                return datetime.fromtimestamp(float(value), tz=timezone.utc)
         return value
 
     def _handle_aggregation_response(self, query, response, aggs, group_clauses):
