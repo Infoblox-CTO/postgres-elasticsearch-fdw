@@ -335,7 +335,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
             logging.ERROR,
         )
 
-        if column_def.base_type_name == "timestamp":
+        if column_def.base_type_name.startswith("timestamp"):
             if isinstance(value, int):
                 if value > 3000000000:
                     value = value / 1000.0
