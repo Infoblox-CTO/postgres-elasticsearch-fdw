@@ -328,8 +328,9 @@ class ElasticsearchFDW(ForeignDataWrapper):
         if column_def is None:
             return value
 
-        log2pg(" field {name}, type {type}, value {value}".format(
+        log2pg(" field {name}, type {type}, value {value}, basetype {base}".format(
             name=column, type=type(value), value=value,
+            base=column_def.base_type_name,
             ),
             logging.ERROR,
         )
