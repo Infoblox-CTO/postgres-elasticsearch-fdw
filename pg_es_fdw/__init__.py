@@ -328,13 +328,6 @@ class ElasticsearchFDW(ForeignDataWrapper):
         if column_def is None:
             return value
 
-        log2pg(" field {name}, type {type}, value {value}, basetype {base}".format(
-            name=column, type=type(value), value=value,
-            base=column_def.base_type_name,
-            ),
-            logging.ERROR,
-        )
-
         if column_def.base_type_name.startswith("timestamp"):
             if isinstance(value, int):
                 if value > 3000000000:
