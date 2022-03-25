@@ -61,7 +61,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
         else:
             auth = None
 
-        scheme = options.pop("scheme", "https")
+        scheme = options.pop("scheme", "http")
         host = options.pop("host", "localhost")
         port = int(options.pop("port", "9200"))
         timeout = int(options.pop("timeout", "10"))
@@ -104,7 +104,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
             )
             return (0, 0)
 
-    def can_pushdown_upperrel(self):
+    def group_buckets(self):
         return {
             "groupby_supported": True,
             "agg_functions": list(_PG_TO_ES_AGG_FUNCS),
@@ -122,6 +122,7 @@ class ElasticsearchFDW(ForeignDataWrapper):
     ):
         query, _ = self._get_query(quals, aggs=aggs, group_clauses=group_clauses)
         return [
+            "Aggs: %s" % aggs,
             "Elasticsearch query to %s" % self.client,
             "Query: %s" % json.dumps(query, indent=4),
         ]
