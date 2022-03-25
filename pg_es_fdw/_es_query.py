@@ -19,6 +19,7 @@ _PG_TO_ES_AGG_FUNCS = {
     "min": "min",
     "sum": "sum",
     "count": "value_count",
+    "date_trunc": "date_trunc",
     "count.*": None  # not mapped to a particular function
 }
 
